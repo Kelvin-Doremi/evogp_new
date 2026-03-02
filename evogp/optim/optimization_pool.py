@@ -41,19 +41,22 @@ class OptimizationPool:
         max_iter: int = 100,
         backend: str = "auto",
         max_queue_size: int = 100,
+        method: str = "bfgs",
     ):
         """
         Args:
             inputs: 输入数据 (N, D)
             labels: 标签
-            max_iter: BFGS 最大迭代次数
-            backend: "auto"/"cpu"/"gpu"
+            max_iter: 最大迭代次数
+            backend: "auto"/"cpu"/"gpu"（仅 method="bfgs" 时有效）
             max_queue_size: 待优化队列最大长度，超出时丢弃最旧的
+            method: "bfgs" 或 "es"，es 通常更快
         """
         self.inputs = inputs
         self.labels = labels
         self.max_iter = max_iter
         self.backend = backend
+        self.method = method
         self.max_queue_size = max_queue_size
 
         self._input_queue: queue.Queue = queue.Queue(maxsize=max_queue_size)
@@ -126,6 +129,7 @@ class OptimizationPool:
                     self.labels,
                     max_iter=self.max_iter,
                     backend=self.backend,
+                    method=self.method,
                 )
                 opt_fitness = -mse
                 self._output_queue.put((opt_tree, opt_fitness))

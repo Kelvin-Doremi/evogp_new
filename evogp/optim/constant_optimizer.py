@@ -222,6 +222,94 @@ def _optimize_scipy(
     return optimized_tree, float(result.fun)
 
 
+def _optimize_es(
+    tree: Tree,
+    inputs: torch.Tensor,
+    labels: torch.Tensor,
+    node_value: np.ndarray,
+    node_type: np.ndarray,
+    subtree_size: np.ndarray,
+    const_positions: np.ndarray,
+    const_values: np.ndarray,
+    max_iter: int,
+    const_bounds: Optional[Tuple[float, float]],
+) -> Tuple[Tree, float]:
+    """
+    CMA-ES 进化策略：使用 Forest.SR_fitness 批量评估，利用 CUDA 加速。
+    无梯度，每代一次批量评估，通常比 BFGS 更快。
+    """
+    from evogp.tree import Forest
+
+    n_const = len(const_values)
+    low, high = (const_bounds[0], const_bounds[1]) if const_bounds else (-1e6, 1e6)
+    device = inputs.device
+
+    # CMA-ES 参数：lambda=4+3*log(n)，mu=lambda/2
+    lambda_ = min(int(4 + 3 * np.log(n_const + 1)), 32)
+    lambda_ = max(lambda_, 4)
+    mu = max(1, lambda_ // 2)
+
+    mean = np.array(const_values, dtype=np.float64)
+    sigma = 0.3
+    # 对角协方差 (sep-CMA)
+    C = np.ones(n_const, dtype=np.float64)
+
+    best_mse = float("inf")
+    best_c = mean.copy()
+
+    node_type_t = tree.node_type
+    subtree_size_t = tree.subtree_size
+
+    labels_ = labels.float().unsqueeze(1) if labels.dim() == 1 else labels.float()
+
+    for _ in range(max_iter):
+        # 采样 lambda_ 个个体：y_i ~ mean + sigma * sqrt(C) * N(0,I)
+        Z = np.random.randn(lambda_, n_const).astype(np.float64)
+        Y = mean + sigma * np.sqrt(C) * Z
+        Y = np.clip(Y, low, high)
+
+        # 构建 Forest：同一结构，不同常数，批量评估
+        batch_nv = np.tile(node_value, (lambda_, 1)).astype(np.float32)
+        batch_nv[:, const_positions] = Y.astype(np.float32)
+
+        batch_node_value = torch.as_tensor(batch_nv, dtype=torch.float32, device=device).contiguous()
+        batch_node_type = node_type_t.unsqueeze(0).repeat(lambda_, 1).contiguous()
+        batch_subtree_size = subtree_size_t.unsqueeze(0).repeat(lambda_, 1).contiguous()
+
+        forest = Forest(
+            tree.input_len, tree.output_len,
+            batch_node_value, batch_node_type, batch_subtree_size,
+        )
+        # SR_fitness 返回 MSE（CUDA 实现），regressor 中 fitness = -SR_fitness 表示适应度
+        raw = forest.SR_fitness(inputs.contiguous(), labels_.contiguous(), use_MSE=True)
+        mse_arr = raw.cpu().numpy().astype(np.float64)
+
+        # 选择 top mu
+        idx = np.argsort(mse_arr)[:mu]
+        mean = np.mean(Y[idx], axis=0)
+        best_idx = int(np.argmin(mse_arr))
+        if mse_arr[best_idx] < best_mse:
+            best_mse = float(mse_arr[best_idx])
+            best_c = Y[best_idx].copy()
+
+        # 更新 C：rank-mu 对角
+        Z_sel = Z[idx]
+        C = np.mean(Z_sel ** 2, axis=0) + 1e-10
+        # sigma 简单衰减
+        sigma *= 0.98
+
+    optimized_value = node_value.copy()
+    for idx, pos in enumerate(const_positions):
+        optimized_value[pos] = best_c[idx]
+
+    optimized_tree = Tree(
+        tree.input_len, tree.output_len,
+        torch.tensor(optimized_value, dtype=torch.float32, device=device),
+        tree.node_type, tree.subtree_size,
+    )
+    return optimized_tree, float(best_mse)
+
+
 def _optimize_gpu(
     tree: Tree,
     inputs: torch.Tensor,
@@ -277,18 +365,20 @@ def optimize_tree_constants(
     tol: float = 1e-6,
     const_bounds: Optional[Tuple[float, float]] = (-1e6, 1e6),
     backend: Literal["auto", "cpu", "gpu"] = "auto",
+    method: Literal["bfgs", "es"] = "bfgs",
 ) -> Tuple[Tree, float]:
     """
-    使用 L-BFGS 优化树中的常数，最小化 MSE 损失。
+    优化树中的常数，最小化 MSE 损失。
 
     Args:
         tree: 待优化的 GP 树
         inputs: 输入数据 (N, D)
         labels: 标签 (N,) 或 (N, 1)
         max_iter: 最大迭代次数
-        tol: 收敛容差
+        tol: 收敛容差（仅 BFGS）
         const_bounds: 常数的上下界
-        backend: "auto"=数据量<500用cpu否则gpu, "cpu"=scipy, "gpu"=torch.LBFGS
+        backend: "auto"=数据量<500用cpu否则gpu（仅 BFGS）
+        method: "bfgs"=L-BFGS 梯度优化, "es"=CMA-ES 进化策略（批量评估，通常更快）
 
     Returns:
         (优化后的树, 优化后的 MSE 损失)
@@ -301,6 +391,12 @@ def optimize_tree_constants(
 
     if len(const_values) == 0:
         return tree, float(torch.mean((tree.forward(inputs) - labels) ** 2).item())
+
+    if method == "es":
+        return _optimize_es(
+            tree, inputs, labels, node_value, node_type, subtree_size,
+            const_positions, const_values, max_iter, const_bounds,
+        )
 
     n_data = inputs.shape[0]
     if backend == "auto":

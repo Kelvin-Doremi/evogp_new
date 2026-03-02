@@ -22,14 +22,20 @@ class StandardPipeline(BasePipeline):
         bfgs_max_iter: int = 100,
         bfgs_backend: str = "auto",
         bfgs_async: bool = False,
+        bfgs_start_gen: int = 0,
+        optimize_method: str = "bfgs",
     ):
         """
         Args:
             optimize_constants: 是否启用常数优化
             bfgs_async: True=异步优化池（GP 不阻塞），False=同步优化（每代等待）
+            bfgs_start_gen: 从该代数开始执行常数优化，之前不优化
+            optimize_method: "bfgs" 或 "es"，es 通常更快
         """
 
         self.algorithm = algorithm
+        self.bfgs_start_gen = bfgs_start_gen
+        self.optimize_method = optimize_method
         self.problem = problem
         self.fitness_target = fitness_target
         self.generation_limit = generation_limit
@@ -47,6 +53,7 @@ class StandardPipeline(BasePipeline):
         self.fitness = None
         self.generation_timestamp = None
         self._optimization_pool = None
+        self.generation_cnt = 0
 
     def step(self):
         # 1. 注入上一轮异步优化完成的结果（替换最差个体）
@@ -57,8 +64,8 @@ class StandardPipeline(BasePipeline):
         fitnesses = self.problem.evaluate(self.algorithm.forest)
         fitnesses[torch.isnan(fitnesses)] = -torch.inf
 
-        # 3. 常数优化（max_iter<=0 时跳过，等价于不执行 BFGS）
-        if self.optimize_constants and self.bfgs_max_iter > 0 and hasattr(self.problem, "datapoints") and hasattr(self.problem, "labels"):
+        # 3. 常数优化（max_iter<=0 时跳过，generation_cnt < bfgs_start_gen 时不优化）
+        if self.optimize_constants and self.bfgs_max_iter > 0 and self.generation_cnt >= self.bfgs_start_gen and hasattr(self.problem, "datapoints") and hasattr(self.problem, "labels"):
             inputs = self.problem.datapoints
             labels = self.problem.labels
             top_k = min(self.bfgs_top_k, len(self.algorithm.forest))
@@ -76,6 +83,7 @@ class StandardPipeline(BasePipeline):
                         opt_tree, _ = optimize_tree_constants(
                             self.algorithm.forest[idx], inputs, labels,
                             max_iter=self.bfgs_max_iter, backend=self.bfgs_backend,
+                            method=self.optimize_method,
                         )
                         self.algorithm.forest[idx] = opt_tree
                     except (NotImplementedError, ValueError):
@@ -118,8 +126,8 @@ class StandardPipeline(BasePipeline):
     def run(self):
         tic = time.time()
 
-        # 异步模式：启动优化池（max_iter<=0 时不启动）
-        if self.bfgs_async and self.optimize_constants and self.bfgs_max_iter > 0 and hasattr(self.problem, "datapoints") and hasattr(self.problem, "labels"):
+        # 异步模式：启动优化池（max_iter<=0 或 bfgs_start_gen>=limit 时不启动）
+        if self.bfgs_async and self.optimize_constants and self.bfgs_max_iter > 0 and self.generation_limit > self.bfgs_start_gen and hasattr(self.problem, "datapoints") and hasattr(self.problem, "labels"):
             from ..optim import OptimizationPool
             self._optimization_pool = OptimizationPool(
                 self.problem.datapoints,
@@ -127,12 +135,14 @@ class StandardPipeline(BasePipeline):
                 max_iter=self.bfgs_max_iter,
                 backend=self.bfgs_backend,
                 max_queue_size=self.bfgs_top_k * 3,
+                method=self.optimize_method,
             )
             self._optimization_pool.start()
 
         try:
             generation_cnt = 0
             while True:
+                self.generation_cnt = generation_cnt
                 if self.is_show_details:
                     start_time = time.time()
 
