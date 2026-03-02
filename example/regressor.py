@@ -62,4 +62,4 @@ best = pipeline.run()
 sympy_expression = best.to_sympy_expr()
 print(sympy_expression)
 
-print(algorithm.pareto_front)
+# print(algorithm.pareto_front)
