@@ -81,10 +81,6 @@ pipeline = StandardPipeline(
     problem,
     generation_limit=100,
     is_show_details=True,
-    optimize_constants=True,
-    bfgs_top_k=20,
-    bfgs_max_iter=100,
-    bfgs_async=True,  # 异步优化池：GP 不阻塞，后台线程精修常数
 )
 
 start_time = time.time()

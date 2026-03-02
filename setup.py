@@ -32,16 +32,15 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/EMI-Group/evogp",
-    packages=find_packages(where="src"),
-    package_dir={"": "src"},
+    packages=find_packages(),
     ext_modules=[
         CUDAExtension(
             name="evogp.evogp_cuda",
             sources=[
-                "./src/evogp/cuda/torch_wrapper.cu",
-                "./src/evogp/cuda/generate.cu",
-                "./src/evogp/cuda/mutation.cu",
-                "./src/evogp/cuda/forward.cu",
+                "./evogp/cuda/torch_wrapper.cu",
+                "./evogp/cuda/generate.cu",
+                "./evogp/cuda/mutation.cu",
+                "./evogp/cuda/forward.cu",
             ],
             extra_compile_args={
                 "cxx": ["-O3"],
@@ -66,6 +65,7 @@ setup(
         "torch",
         "numpy",
         "scikit_learn",
+        "scipy",
         "networkx",
         "sympy",
     ],

@@ -256,6 +256,46 @@ class Tree:
         agraph.draw(fname, format="png", prog="dot")
         agraph.close()
 
+    def add(self, other: "Tree") -> "Tree":
+        """
+        构造新树表示 self + other（加项组合）。
+        用于增量搜索：固定 base，搜索加项。
+        """
+        left_size = int(self.subtree_size[0].item())
+        right_size = int(other.subtree_size[0].item())
+        new_len = 1 + left_size + right_size
+        max_len = max(self.max_tree_len, other.max_tree_len, new_len)
+
+        new_value = torch.cat(
+            [
+                torch.tensor([Func.ADD], dtype=torch.float32, device=self.node_value.device),
+                self.node_value[:left_size],
+                other.node_value[:right_size],
+            ]
+        )
+        new_type = torch.cat(
+            [
+                torch.tensor([NType.BFUNC], dtype=torch.int16, device=self.node_type.device),
+                self.node_type[:left_size],
+                other.node_type[:right_size],
+            ]
+        )
+        new_subtree_size = torch.cat(
+            [
+                torch.tensor([new_len], dtype=torch.int16, device=self.subtree_size.device),
+                self.subtree_size[:left_size],
+                other.subtree_size[:right_size],
+            ]
+        )
+        # 填充到 max_len
+        if new_len < max_len:
+            pad = max_len - new_len
+            new_value = torch.cat([new_value, self.node_value.new_zeros(pad)])
+            new_type = torch.cat([new_type, self.node_type.new_zeros(pad)])
+            new_subtree_size = torch.cat([new_subtree_size, self.subtree_size.new_zeros(pad)])
+
+        return Tree(self.input_len, self.output_len, new_value, new_type, new_subtree_size)
+
     def to_sympy_expr(self, symbol_names=None):
         node_value, node_type, subtree_size = to_numpy(
             [self.node_value, self.node_type, self.subtree_size]

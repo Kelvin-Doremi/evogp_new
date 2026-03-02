@@ -2,6 +2,7 @@ torch
 scikit_learn
 sympy
 numpy
+scipy
 networkx
 
 # pygraphvi  # optional, for visualize tree

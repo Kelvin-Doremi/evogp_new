@@ -27,12 +27,12 @@ problem = SymbolicRegression(
 )
 
 descriptor = GenerateDescriptor(
-    max_tree_len=64,
+    max_tree_len=32,
     input_len=problem.problem_dim,
     output_len=problem.solution_dim,
     using_funcs=["+", "-", "*", "/"],
     max_layer_cnt=5,
-    const_samples=[-2, -1, 0, 1, 2],
+    const_samples=[-1, 0, 1],
     layer_leaf_prob=0.3,
 )
 
@@ -44,7 +44,7 @@ algorithm = GeneticProgramming(
         mutation_rate=0.1, descriptor=descriptor.update(max_layer_cnt=3)
     ),
     selection=TournamentSelection(
-        tournament_size=20, survivor_rate=0.8, elite_rate=0.05
+        tournament_size=20, survivor_rate=0.5, elite_rate=0.1
     ),
     enable_pareto_front=False,
 )
@@ -53,10 +53,6 @@ pipeline = StandardPipeline(
     algorithm,
     problem,
     generation_limit=300,
-    optimize_constants=True,
-    bfgs_top_k=30,
-    bfgs_max_iter=100,
-    bfgs_async=True,  # 异步优化池：GP 不阻塞，后台线程精修常数
 )
 
 best = pipeline.run()
