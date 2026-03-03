@@ -1,6 +1,6 @@
 import torch
 import evogp
-from evogp.tree import Tree
+from evogp.core import Tree
 
 tree = Tree(
     3,

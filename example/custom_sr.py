@@ -10,10 +10,9 @@ import torch
 torch.random.manual_seed(seed)
 torch.cuda.manual_seed(seed)
 
-from evogp.pipeline import StandardPipeline
-from evogp.tree import Forest, GenerateDescriptor
-from evogp.algorithm import (
-    GeneticProgramming,
+from evogp.workflows import StandardWorkflow, GeneticProgramming
+from evogp.core import Forest, GenerateDescriptor
+from evogp.operators import (
     DefaultSelection,
     TournamentSelection,
     DefaultMutation,
@@ -22,7 +21,7 @@ from evogp.algorithm import (
     DeleteMutation,
     DiversityCrossover,
 )
-from evogp.problem import SymbolicRegression
+from evogp.problems import SymbolicRegression
 
 import pandas as pd
 X_df = pd.read_csv(f"data/{problem_id}_features.csv")
@@ -71,7 +70,7 @@ algorithm = GeneticProgramming(
     enable_pareto_front=False,
 )
 
-pipeline = StandardPipeline(
+pipeline = StandardWorkflow(
     algorithm,
     problem,
     generation_limit=100,

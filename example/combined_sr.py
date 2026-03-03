@@ -1,13 +1,13 @@
 import torch
-from evogp.tree import CombinedForest, GenerateDescriptor
-from evogp.algorithm import (
-    GeneticProgramming,
+from evogp.core import CombinedForest, GenerateDescriptor
+from evogp.workflows import GeneticProgramming
+from evogp.operators import (
     DefaultSelection,
     CombinedDefaultMutation,
     CombinedDefaultCrossover,
 )
-from evogp.problem import SymbolicRegression
-from evogp.pipeline import StandardPipeline
+from evogp.problems import SymbolicRegression
+from evogp.workflows import StandardWorkflow
 
 XOR_INPUTS = torch.tensor(
     [
@@ -57,7 +57,7 @@ algorithm = GeneticProgramming(
     selection=DefaultSelection(survival_rate=0.3, elite_rate=0.01),
 )
 
-pipeline = StandardPipeline(
+pipeline = StandardWorkflow(
     algorithm,
     problem,
     generation_limit=100,

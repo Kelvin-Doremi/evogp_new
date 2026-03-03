@@ -114,15 +114,15 @@ Start your journey with EvoGP in a few simple steps:
 1. **Import necessary modules**:
 ```python
 import torch
-from evogp.tree import Forest, GenerateDescriptor
-from evogp.algorithm import (
-    GeneticProgramming,
+from evogp.core import Forest, GenerateDescriptor
+from evogp.workflows import GeneticProgramming
+from evogp.operators import (
     DefaultSelection,
     DefaultMutation,
     DefaultCrossover,
 )
-from evogp.problem import SymbolicRegression
-from evogp.pipeline import StandardPipeline
+from evogp.problems import SymbolicRegression
+from evogp.workflows import StandardPipeline
 ```
 
 2. **Define a problem (Here is Symbolic Regression with XOR-3d)**:
@@ -232,23 +232,23 @@ EvoGP includes multiple genetic operators, allowing users to freely assemble the
 
 | Type       | Name                                  |
 |------------|---------------------------------------|
-| Selection  | [DefaultSelection](src/evogp/algorithm/selection/default.py) |
-| Selection  | [RouletteSelection](src/evogp/algorithm/selection/roulette.py) |
-| Selection  | [TruncationSelection](src/evogp/algorithm/selection/truncation.py) |
-| Selection  | [RankSelection](src/evogp/algorithm/selection/rank.py) |
-| Selection  | [TournamentSelection](src/evogp/algorithm/selection/tournament.py) |
-| Crossover  | [DefaultCrossover](src/evogp/algorithm/crossover/default.py) |
-| Crossover  | [DiversityCrossover](src/evogp/algorithm/crossover/diversity.py) |
-| Crossover  | [LeafBiasedCrossover](src/evogp/algorithm/crossover/leaf_biased.py) |
-| Mutation   | [DefaultMutation](src/evogp/algorithm/mutation/default.py) |
-| Mutation   | [HoistMutation](src/evogp/algorithm/mutation/hoist.py) |
-| Mutation   | [SinglePointMutation](src/evogp/algorithm/mutation/single_point.py) |
-| Mutation   | [MultiPointMutation](src/evogp/algorithm/mutation/multi_point.py) |
-| Mutation   | [InsertMutation](src/evogp/algorithm/mutation/insert.py) |
-| Mutation   | [DeleteMutation](src/evogp/algorithm/mutation/delete.py) |
-| Mutation   | [SingleConstMutation](src/evogp/algorithm/mutation/single_const.py) |
-| Mutation   | [MultiConstMutation](src/evogp/algorithm/mutation/multi_const.py) |
-| Mutation   | [CombinedMutation](src/evogp/algorithm/mutation/combined.py) |
+| Selection  | [DefaultSelection](src/evogp/operators/selection/default.py) |
+| Selection  | [RouletteSelection](src/evogp/operators/selection/roulette.py) |
+| Selection  | [TruncationSelection](src/evogp/operators/selection/truncation.py) |
+| Selection  | [RankSelection](src/evogp/operators/selection/rank.py) |
+| Selection  | [TournamentSelection](src/evogp/operators/selection/tournament.py) |
+| Crossover  | [DefaultCrossover](src/evogp/operators/crossover/default.py) |
+| Crossover  | [DiversityCrossover](src/evogp/operators/crossover/diversity.py) |
+| Crossover  | [LeafBiasedCrossover](src/evogp/operators/crossover/leaf_biased.py) |
+| Mutation   | [DefaultMutation](src/evogp/operators/mutation/default.py) |
+| Mutation   | [HoistMutation](src/evogp/operators/mutation/hoist.py) |
+| Mutation   | [SinglePointMutation](src/evogp/operators/mutation/single_point.py) |
+| Mutation   | [MultiPointMutation](src/evogp/operators/mutation/multi_point.py) |
+| Mutation   | [InsertMutation](src/evogp/operators/mutation/insert.py) |
+| Mutation   | [DeleteMutation](src/evogp/operators/mutation/delete.py) |
+| Mutation   | [SingleConstMutation](src/evogp/operators/mutation/single_const.py) |
+| Mutation   | [MultiConstMutation](src/evogp/operators/mutation/multi_const.py) |
+| Mutation   | [CombinedMutation](src/evogp/operators/mutation/combined.py) |
 
 
 ## Supported Benchmarks
@@ -259,7 +259,7 @@ EvoGP supports symbolic regression tasks.
 You can construct a `Problem` with your custom dataset:
 
 ```python
-from evogp.problem import SymbolicRegression
+from evogp.problems import SymbolicRegression
 
 problem = SymbolicRegression(datapoints=YOUR_DATA, labels=YOUR_LABELS)
 ```
@@ -285,7 +285,7 @@ EvoGP supports classification tasks.
 You can construct a `Problem` with your custom dataset:
 
 ```python
-from evogp.problem import Classification
+from evogp.problems import Classification
 problem = Classification(datapoints=YOUR_DATA, labels=YOUR_LABELS)
 ```
 
@@ -301,7 +301,7 @@ problem = Classification(dataset="iris")
 EvoGP supports feature transformation tasks, allowing the generation of new features from raw data to improve model performance. You can create a `Problem` with your custom dataset:
 
 ```python
-from evogp.problem import Transformation
+from evogp.problems import Transformation
 
 problem = Transformation(datapoints=YOUR_DATA, labels=YOUR_LABELS)
 ```
@@ -320,7 +320,7 @@ During execution, EvoGP automatically generates features optimized for correlati
 EvoGP supports robotics control tasks.
 You can create a Brax task with the following code:
 ```python
-from evogp.problem import BraxProblem
+from evogp.problems import BraxProblem
 problem = BraxProblem("swimmer")
 ```
 **Note:** Using `BraxProblem` requires additional installation of the [JAX](https://github.com/jax-ml/jax) and [Brax](https://github.com/google/brax) packages.
@@ -331,14 +331,14 @@ Once you create your problem, you can use the following code to solve them:
 ```python
 problem = YOUR_HAVE_ALREADY_CREATED_IT
 
-from evogp.tree import Forest, GenerateDescriptor
-from evogp.algorithm import (
-    GeneticProgramming,
+from evogp.core import Forest, GenerateDescriptor
+from evogp.workflows import GeneticProgramming
+from evogp.operators import (
     DefaultSelection,
     DefaultMutation,
     DefaultCrossover,
 )
-from evogp.pipeline import StandardPipeline
+from evogp.workflows import StandardPipeline
 
 descriptor = GenerateDescriptor(
     max_tree_len=128,

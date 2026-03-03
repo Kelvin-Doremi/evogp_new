@@ -5,16 +5,16 @@ import torch
 torch.random.manual_seed(0)
 torch.cuda.manual_seed(0)
 
-from evogp.tree import Forest, GenerateDescriptor
-from evogp.algorithm import (
-    GeneticProgramming,
+from evogp.core import Forest, GenerateDescriptor
+from evogp.workflows import GeneticProgramming
+from evogp.operators import (
     DefaultSelection,
     DefaultMutation,
     DefaultCrossover,
     DeleteMutation,
     CombinedMutation,
 )
-from evogp.pipeline import StandardPipeline
+from evogp.workflows import StandardWorkflow
 
 problem = MujocoProblem(
     "SwimmerSwimmer6",
@@ -46,7 +46,7 @@ algorithm = GeneticProgramming(
     selection=DefaultSelection(survival_rate=0.3, elite_rate=0.01),
 )
 
-pipeline = StandardPipeline(
+pipeline = StandardWorkflow(
     algorithm,
     problem,
     generation_limit=100,

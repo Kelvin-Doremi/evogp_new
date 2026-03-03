@@ -4,15 +4,14 @@ torch.random.manual_seed(0)
 torch.cuda.manual_seed(0)
 
 import time
-from evogp.tree import Forest
-from evogp.algorithm import (
-    GeneticProgramming,
+from evogp.core import Forest, GenerateDescriptor
+from evogp.workflows import GeneticProgramming
+from evogp.operators import (
     DefaultSelection,
     DefaultMutation,
     DefaultCrossover,
 )
-from evogp.tree import GenerateDescriptor
-from evogp.problem import Transformation
+from evogp.problems import Transformation
 
 
 def print_color(text):

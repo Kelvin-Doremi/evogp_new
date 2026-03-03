@@ -3,17 +3,16 @@ import torch
 torch.random.manual_seed(0)
 torch.cuda.manual_seed(0)
 
-from evogp.pipeline import StandardPipeline
-from evogp.tree import Forest, GenerateDescriptor
-from evogp.algorithm import (
-    GeneticProgramming,
+from evogp.workflows import StandardWorkflow, GeneticProgramming
+from evogp.core import Forest, GenerateDescriptor
+from evogp.operators import (
     DefaultSelection,
     DefaultMutation,
     DefaultCrossover,
     CombinedMutation,
     DeleteMutation,
 )
-from evogp.problem import Classification
+from evogp.problems import Classification
 
 
 
@@ -49,7 +48,7 @@ algorithm = GeneticProgramming(
     enable_pareto_front=True,
 )
 
-pipeline = StandardPipeline(
+pipeline = StandardWorkflow(
     algorithm,
     problem,
     generation_limit=100,

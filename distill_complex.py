@@ -6,9 +6,9 @@ import numpy as np
 import pandas as pd
 import os
 
-from evogp.algorithm import DefaultCrossover, DefaultMutation, TournamentSelection
-from evogp.pipeline import Regressor
-from evogp.tree import Forest, GenerateDescriptor
+from evogp.operators import DefaultCrossover, DefaultMutation, TournamentSelection
+from evogp.estimators import Regressor
+from evogp.core import Forest, GenerateDescriptor
 
 # 设置设备
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

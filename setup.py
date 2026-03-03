@@ -37,10 +37,10 @@ setup(
         CUDAExtension(
             name="evogp.evogp_cuda",
             sources=[
-                "./evogp/cuda/torch_wrapper.cu",
-                "./evogp/cuda/generate.cu",
-                "./evogp/cuda/mutation.cu",
-                "./evogp/cuda/forward.cu",
+                "./evogp/core/backend/torch_wrapper.cu",
+                "./evogp/core/backend/generate.cu",
+                "./evogp/core/backend/mutation.cu",
+                "./evogp/core/backend/forward.cu",
             ],
             extra_compile_args={
                 "cxx": ["-O3"],
