@@ -28,15 +28,15 @@ class Regressor:
         self.best_fitness = float("-inf")
 
     def step(self, X, y):
-        # evaluate fitness
-        fitnesses = -self.algorithm.forest.SR_fitness(X, y)
-        fitnesses[torch.isnan(fitnesses)] = -torch.inf
+        # mutation and selection
+        self.algorithm.step(self.fitnesses)
 
-        # update the algorithm status
-        self.algorithm.step(fitnesses)
+        # evaluation
+        self.fitnesses = -self.algorithm.forest.SR_fitness(X, y)
+        self.fitnesses[torch.isnan(self.fitnesses)] = -torch.inf
 
         # update the best tree info
-        cpu_fitness = fitnesses.cpu()
+        cpu_fitness = self.fitnesses.cpu()
         best_idx, best_fitness = int(torch.argmax(cpu_fitness)), torch.max(cpu_fitness)
         if best_fitness > self.best_fitness:
             self.best_fitness = best_fitness
@@ -44,6 +44,8 @@ class Regressor:
 
     def fit(self, X, y):
         generation_cnt = 0
+        self.fitnesses = -self.algorithm.forest.SR_fitness(X, y)
+        self.fitnesses[torch.isnan(self.fitnesses)] = -torch.inf
         while True:
             self.step(X, y)
 
