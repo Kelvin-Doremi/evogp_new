@@ -74,10 +74,9 @@ for out_idx in range(output_dim):
         mutation=DefaultMutation(
             mutation_rate=0.1, descriptor=descriptor.update(max_layer_cnt=4)
         ),
-        selection=TournamentSelection(
-            tournament_size=20, survivor_rate=0.5, elite_rate=0.1
-        ),
+        selection=TournamentSelection(tournament_size=20),
         generation_limit=100,
+        elite_rate=0.1,
         print_mse=True,
     )
     gp_model.fit(gp_train_X, gp_train_y)

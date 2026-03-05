@@ -44,8 +44,9 @@ algorithm = GeneticProgramming(
             DeleteMutation(mutation_rate=0.8),
         ]
     ),
-    selection=DefaultSelection(survival_rate=0.3, elite_rate=0.01),
+    selection=DefaultSelection(),
     enable_pareto_front=True,
+    elite_rate=0.01,
 )
 
 pipeline = StandardWorkflow(

@@ -43,7 +43,8 @@ algorithm = GeneticProgramming(
     mutation=DefaultMutation(
         mutation_rate=0.2, descriptor=descriptor.update(max_layer_cnt=3)
     ),
-    selection=DefaultSelection(survival_rate=0.3, elite_rate=0.01),
+    selection=DefaultSelection(),
+    elite_rate=0.01,
 )
 
 pipeline = StandardWorkflow(

@@ -5,50 +5,37 @@ from .base import BaseCrossover
 
 
 class CombinedDefaultCrossover(BaseCrossover):
-    def __call__(
+    """Random subtree crossover for :class:`CombinedForest`.
+
+    Applies independent random-position crossover to each sub-forest
+    while sharing the same (recipient, donor) pairing across all outputs.
+
+    Args:
+        crossover_rate: Fraction of pairs that undergo real crossover.
+    """
+
+    def _crossover(
         self,
         forest: CombinedForest,
-        survivor_indices: torch.Tensor,
-        target_cnt: int,
-        fitness: torch.Tensor,
-    ):
-        # Get the forest of survivors based on the given indices.
-        survivor_forest = forest[survivor_indices]
-
-        # Randomly select pairs of individuals for crossover (left and right).
-        left_indices, right_indices = torch.randint(
-            low=0,
-            high=len(survivor_forest),
-            size=(2, target_cnt),
-            dtype=torch.int32,
-            device="cuda",
-            requires_grad=False,
-        )
-
-        # crossover each forest in the combined forest
-        new_forest = []
-        for i in range(len(forest.forests)):
-            tree_sizes = survivor_forest.forests[i].batch_subtree_size[:, 0]
-
-            left_pos_unlimited, right_pos_unlimited = torch.randint(
+        recipient_indices: torch.Tensor,
+        donor_indices: torch.Tensor,
+    ) -> CombinedForest:
+        n = recipient_indices.shape[0]
+        new_forests = []
+        for sub_forest in forest.forests:
+            tree_sizes = sub_forest.batch_subtree_size[:, 0]
+            pos_rand = torch.randint(
                 low=0,
                 high=torch.iinfo(torch.int32).max,
-                size=(2, target_cnt),
+                size=(2, n),
                 dtype=torch.int32,
                 device="cuda",
-                requires_grad=False,
             )
-
-            # Ensure positions are within the subtree sizes.
-            left_pos = left_pos_unlimited % tree_sizes[left_indices]
-            right_pos = right_pos_unlimited % tree_sizes[right_indices]
-
-            new_forest.append(
-                survivor_forest.forests[i].crossover(
-                    left_indices, right_indices, left_pos, right_pos
+            left_pos = pos_rand[0] % tree_sizes[recipient_indices]
+            right_pos = pos_rand[1] % tree_sizes[donor_indices]
+            new_forests.append(
+                sub_forest.crossover(
+                    recipient_indices, donor_indices, left_pos, right_pos
                 )
             )
-
-        return CombinedForest(
-            new_forest, forest.data_info
-        )
+        return CombinedForest(new_forests, forest.data_info)

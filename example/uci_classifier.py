@@ -20,7 +20,6 @@ from evogp.operators import (
     DefaultCrossover,
     CombinedMutation,
     DeleteMutation,
-    DiversityCrossover,
 )
 from evogp.problems import Classification
 
@@ -85,7 +84,6 @@ descriptor = GenerateDescriptor(
 algorithm = GeneticProgramming(
     initial_forest=Forest.random_generate(pop_size=pop_size, descriptor=descriptor),
     crossover=DefaultCrossover(),
-    # crossover=DiversityCrossover(crossover_rate=0.9),
     # mutation=CombinedMutation(
     #     [
     #         DefaultMutation(
@@ -97,10 +95,9 @@ algorithm = GeneticProgramming(
     mutation=DefaultMutation(
         mutation_rate=0.1, descriptor=descriptor.update(max_layer_cnt=4)
     ),
-    selection=TournamentSelection(
-        tournament_size=20, survivor_rate=0.5, elite_rate=0.1
-    ),
+    selection=TournamentSelection(tournament_size=20),
     enable_pareto_front=False,
+    elite_rate=0.1,
 )
 
 pipeline = StandardWorkflow(

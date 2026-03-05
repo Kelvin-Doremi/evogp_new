@@ -26,11 +26,11 @@ problem = SymbolicRegression(
 )
 
 descriptor = GenerateDescriptor(
-    max_tree_len=128,
+    max_tree_len=64,
     input_len=problem.problem_dim,
     output_len=problem.solution_dim,
     using_funcs=["+", "-", "*", "/"],
-    max_layer_cnt=7,
+    max_layer_cnt=6,
     const_samples=[-1, 0, 1],
     layer_leaf_prob=0,
 )
@@ -38,7 +38,7 @@ descriptor = GenerateDescriptor(
 
 algorithm = GeneticProgramming(
     initial_forest=Forest.random_generate(pop_size=1000, descriptor=descriptor),
-    crossover=DefaultCrossover(),
+    crossover=DefaultCrossover(crossover_rate=0.9),
     mutation=CombinedMutation(
         [
             DefaultMutation(
@@ -47,14 +47,15 @@ algorithm = GeneticProgramming(
             DeleteMutation(mutation_rate=0.8),
         ]
     ),
-    selection=DefaultSelection(survival_rate=0.3, elite_rate=0.01),
+    selection=DefaultSelection(),
     enable_pareto_front=False,
+    elite_rate=0.1,
 )
 
 pipeline = StandardWorkflow(
     algorithm,
     problem,
-    generation_limit=300,
+    generation_limit=150,
 )
 
 best = pipeline.run()

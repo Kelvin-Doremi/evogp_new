@@ -43,6 +43,7 @@ class GeneticProgramming:
         crossover: BaseCrossover,
         mutation: BaseMutation,
         selection: BaseSelection,
+        elite_rate: float = 0.0,
         enable_pareto_front: bool = False,
     ):
         self.forest = initial_forest
@@ -50,6 +51,7 @@ class GeneticProgramming:
         self.crossover = crossover
         self.mutation = mutation
         self.selection = selection
+        self.elite_rate = elite_rate
         self.enable_pareto_front = enable_pareto_front
         if enable_pareto_front:
             self.pareto_front = ParetoFront(
@@ -79,7 +81,6 @@ class GeneticProgramming:
         fitness_expanded = fitness.broadcast_to(max_tree_len, -1)
         size_expanded = size.broadcast_to(max_tree_len, -1)
 
-        # get the best fitness and indices for each subtree size
         masked_fitness = torch.where(
             size_expanded == torch.arange(max_tree_len, device="cuda").unsqueeze(1),
             fitness_expanded,
@@ -87,7 +88,6 @@ class GeneticProgramming:
         )
         best_fitness, best_indices = torch.max(masked_fitness, dim=1)
 
-        # update the Pareto front
         better_mask = best_fitness > self.pareto_front.fitness
         self.pareto_front.fitness = torch.where(
             better_mask,
@@ -118,14 +118,26 @@ class GeneticProgramming:
         if self.enable_pareto_front:
             self.vmap_update_pareto_front(fitness, self.forest)
 
-        elite_indices, next_indices = self.selection(self.forest, fitness)
-        next_forest = self.crossover(
-            forest=self.forest,
-            survivor_indices=next_indices,
-            target_cnt=self.pop_size - elite_indices.shape[0],
-            fitness=fitness,
-        )
+        # Elite preservation
+        elite_cnt = int(self.pop_size * self.elite_rate)
+        offspring_cnt = self.pop_size - elite_cnt
+
+        if elite_cnt > 0:
+            elite_indices = torch.argsort(fitness, descending=True)[
+                :elite_cnt
+            ].to(torch.int32)
+
+        # Parent selection
+        recipient_indices = self.selection(fitness, offspring_cnt)
+        donor_indices = self.selection(fitness, offspring_cnt)
+
+        # Crossover + mutation
+        next_forest = self.crossover(self.forest, recipient_indices, donor_indices)
         next_forest = self.mutation(next_forest)
-        self.forest = self.forest[elite_indices] + next_forest
+
+        if elite_cnt > 0:
+            self.forest = self.forest[elite_indices] + next_forest
+        else:
+            self.forest = next_forest
 
         return self.forest

@@ -1,17 +1,33 @@
+"""
+Regressor with Evolution Strategy (ES) constant optimization.
+
+Extends Regressor by applying constant optimization (e.g. CMA-ES) after each
+genetic step. The optimization replaces the separate evaluation phase.
+"""
 import torch
 
 from evogp.workflows import GeneticProgramming
 from evogp.operators import BaseMutation, BaseCrossover, BaseSelection
+from evogp.operators.optimization import BaseOptimization
 from evogp.core import Forest
 
 
-class Regressor:
+class RegressorES:
+    """
+    Regressor with constant optimization via Evolution Strategy.
+
+    After each genetic step (selection, crossover, mutation), applies constant
+    optimization to the top n_optimize individuals. The optimization both
+    updates constants and computes fitnesses, so no separate evaluation is needed.
+    """
+
     def __init__(
         self,
         initial_forest: Forest,
         crossover: BaseCrossover,
         mutation: BaseMutation,
         selection: BaseSelection,
+        optimization: BaseOptimization,
         elite_rate: float = 0.0,
         fitness_target: float = None,
         generation_limit: int = 100,
@@ -21,6 +37,7 @@ class Regressor:
         self.algorithm = GeneticProgramming(
             initial_forest, crossover, mutation, selection, elite_rate=elite_rate
         )
+        self.optimization = optimization
         self.fitness_target = fitness_target
         self.generation_limit = generation_limit
         self.print_mse = print_mse
@@ -32,11 +49,14 @@ class Regressor:
     def step(self, X, y):
         self.algorithm.step(self.fitnesses)
 
-        self.fitnesses = -self.algorithm.forest.SR_fitness(X, y)
+        self.fitnesses = self.optimization(
+            self.algorithm.forest, X, y
+        )
         self.fitnesses[torch.isnan(self.fitnesses)] = -torch.inf
 
         cpu_fitness = self.fitnesses.cpu()
-        best_idx, best_fitness = int(torch.argmax(cpu_fitness)), torch.max(cpu_fitness)
+        best_idx = int(torch.argmax(cpu_fitness))
+        best_fitness = torch.max(cpu_fitness)
         if best_fitness > self.best_fitness:
             self.best_fitness = best_fitness
             self.best_tree = self.algorithm.forest[best_idx]
@@ -45,6 +65,7 @@ class Regressor:
         generation_cnt = 0
         self.fitnesses = -self.algorithm.forest.SR_fitness(X, y)
         self.fitnesses[torch.isnan(self.fitnesses)] = -torch.inf
+
         while True:
             self.step(X, y)
 
@@ -54,7 +75,10 @@ class Regressor:
                     if hasattr(self.best_fitness, "item")
                     else -self.best_fitness
                 )
-                print(f"{self.print_mse_prefix}Generation {generation_cnt}: MSE = {mse:.6f}")
+                print(
+                    f"{self.print_mse_prefix}Generation {generation_cnt}: "
+                    f"MSE = {mse:.6f}"
+                )
 
             if (
                 self.fitness_target is not None

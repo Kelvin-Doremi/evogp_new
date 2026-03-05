@@ -3,6 +3,7 @@ scikit_learn
 sympy
 numpy
 networkx
+cma
 
 # pygraphvi  # optional, for visualize tree
 # jax  # optional, for jax-based problem
