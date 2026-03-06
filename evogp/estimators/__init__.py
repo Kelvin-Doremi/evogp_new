@@ -1,2 +1,2 @@
 from .regressor import Regressor
-from .regressor_es import RegressorES
+from .boosted_regressor import BoostedRegressor

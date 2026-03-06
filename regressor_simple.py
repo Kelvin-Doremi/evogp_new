@@ -69,12 +69,13 @@ for out_idx in range(output_dim):
     )
 
     gp_model = Regressor(
-        initial_forest=Forest.random_generate(pop_size=1000, descriptor=descriptor),
+        descriptor=descriptor,
         crossover=DefaultCrossover(),
         mutation=DefaultMutation(
             mutation_rate=0.1, descriptor=descriptor.update(max_layer_cnt=4)
         ),
         selection=TournamentSelection(tournament_size=20),
+        pop_size=1000,
         generation_limit=100,
         elite_rate=0.1,
         print_mse=True,

@@ -2,7 +2,7 @@ import torch
 from torch import Tensor
 
 from evogp.operators import BaseMutation, BaseCrossover, BaseSelection
-from evogp.core import Forest
+from evogp.core import Forest, GenerateDescriptor
 
 
 class BaseWorkflow:
@@ -39,20 +39,31 @@ class GeneticProgramming:
 
     def __init__(
         self,
-        initial_forest: Forest,
         crossover: BaseCrossover,
         mutation: BaseMutation,
         selection: BaseSelection,
+        descriptor: GenerateDescriptor,
+        initial_forest: Forest = None,
+        pop_size: int = None,
         elite_rate: float = 0.0,
         enable_pareto_front: bool = False,
+        inject_rate: float = 0.0,
     ):
+        if initial_forest is None:
+            assert descriptor is not None and pop_size is not None, (
+                "Must provide either initial_forest or (descriptor + pop_size)"
+            )
+            initial_forest = Forest.random_generate(pop_size, descriptor)
+
         self.forest = initial_forest
         self.pop_size = initial_forest.pop_size
         self.crossover = crossover
         self.mutation = mutation
         self.selection = selection
+        self.descriptor = descriptor
         self.elite_rate = elite_rate
         self.enable_pareto_front = enable_pareto_front
+        self.inject_rate = inject_rate
         if enable_pareto_front:
             self.pareto_front = ParetoFront(
                 self.forest.max_tree_len,
@@ -122,18 +133,30 @@ class GeneticProgramming:
         elite_cnt = int(self.pop_size * self.elite_rate)
         offspring_cnt = self.pop_size - elite_cnt
 
+        inject_cnt = 0
+        if self.inject_rate > 0 and self.descriptor is not None:
+            inject_cnt = min(
+                int(self.pop_size * self.inject_rate),
+                max(0, offspring_cnt - 1),
+            )
+        real_offspring_cnt = offspring_cnt - inject_cnt
+
         if elite_cnt > 0:
             elite_indices = torch.argsort(fitness, descending=True)[
                 :elite_cnt
             ].to(torch.int32)
 
         # Parent selection
-        recipient_indices = self.selection(fitness, offspring_cnt)
-        donor_indices = self.selection(fitness, offspring_cnt)
+        recipient_indices = self.selection(fitness, real_offspring_cnt)
+        donor_indices = self.selection(fitness, real_offspring_cnt)
 
         # Crossover + mutation
         next_forest = self.crossover(self.forest, recipient_indices, donor_indices)
         next_forest = self.mutation(next_forest)
+
+        if inject_cnt > 0:
+            random_forest = Forest.random_generate(inject_cnt, self.descriptor)
+            next_forest = next_forest + random_forest
 
         if elite_cnt > 0:
             self.forest = self.forest[elite_indices] + next_forest
