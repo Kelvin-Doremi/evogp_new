@@ -4,6 +4,7 @@
     python eval_model.py                                          # 默认加载 two_phase_results.pkl
     python eval_model.py models/gp_models/pareto_phase1_out0.pkl  # 加载帕累托文件
 """
+import os
 import sys
 import pickle
 
@@ -11,14 +12,19 @@ import numpy as np
 import pandas as pd
 import torch
 
+# 项目根目录（scripts 的上一级）
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATASETS_DIR = os.path.join(ROOT_DIR, "datasets")
+MODELS_DIR = os.path.join(ROOT_DIR, "models", "gp_models")
+
 RED, RESET = "\033[31m", "\033[0m"
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"设备: {device}")
 
 # ========== 数据（与训练时完全一致的划分） ==========
-X_df = pd.read_csv("999_features.csv")
-y_df = pd.read_csv("999_targets.csv")
+X_df = pd.read_csv(os.path.join(DATASETS_DIR, "999_features.csv"))
+y_df = pd.read_csv(os.path.join(DATASETS_DIR, "999_targets.csv"))
 X = X_df.to_numpy(dtype=np.float32)
 y = y_df.to_numpy(dtype=np.float32)
 
@@ -36,7 +42,9 @@ print(f"特征: {X.shape}, 目标: {y.shape}")
 print(f"训练: {X_train.shape[0]}, 验证: {X_val.shape[0]}")
 
 # ========== 加载 ==========
-model_path = "models/gp_models/pareto_phase1_out0.pkl"
+model_path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(MODELS_DIR, "pareto_phase1_out0.pkl")
+if not os.path.isabs(model_path):
+    model_path = os.path.join(ROOT_DIR, model_path)
 with open(model_path, "rb") as f:
     data = pickle.load(f)
 print(f"\n已加载: {model_path}")

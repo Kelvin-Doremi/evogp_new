@@ -2,7 +2,7 @@ import torch
 
 from evogp.workflows import GeneticProgramming
 from evogp.operators import BaseMutation, BaseCrossover, BaseSelection
-from evogp.operators.optimization import CMAESOptimization
+from evogp.operators.optimization import CMAESOptimization, SeparableNESOptimization, OpenESOptimization
 from evogp.core import Forest, GenerateDescriptor
 
 
@@ -60,11 +60,10 @@ class Regressor:
 
         self._pre_opt = None
         if optim_steps > 0:
-            self._pre_opt = CMAESOptimization(
+            self._pre_opt = OpenESOptimization(
                 n_optimize=optim_n,
                 n_offspring=optim_offspring,
                 opt_iterations=optim_steps,
-                sigma=1.0,
             )
 
         self._opt_interval = max(1, optim_interval)

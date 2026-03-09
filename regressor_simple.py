@@ -1,143 +1,184 @@
 """
-直接使用 GP 拟合 999_features.csv 和 999_targets.csv，不经过神经网络。
+两阶段 GP 符号回归：
+  阶段1：结构搜索（高交叉、中变异、轻常数优化）
+  阶段2：常数精调（低交叉、低变异、重常数优化），继承阶段1种群
+
+用法: python regressor_simple.py [dataset_id]
+  如不传参则使用下方 DATASET_ID，也可直接在文件中修改 DATASET_ID
 """
-import torch
+import os
+import pickle
+import sys
+import time
+
 import numpy as np
 import pandas as pd
-import os
+import torch
 
 from evogp.operators import DefaultCrossover, DefaultMutation, TournamentSelection
 from evogp.estimators import Regressor
-from evogp.core import Forest, GenerateDescriptor
+from evogp.core import GenerateDescriptor
 
-# 设置设备
+# 数据集 ID，可在文件中修改，或通过命令行传入: python regressor_simple.py 1
+DATASET_ID = 9
+if len(sys.argv) > 1:
+    DATASET_ID = int(sys.argv[1])
+
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATASETS_DIR = os.path.join(ROOT_DIR, "datasets")
+MODELS_DIR = os.path.join(ROOT_DIR, "models", "gp_models", str(DATASET_ID), "simple")
+
+RED, RESET = "\033[31m", "\033[0m"
+
+
+def print_and_save_pareto(model, save_path, prefix="", print_verbose=False):
+    """提取并保存帕累托前沿。print_verbose=True 时打印各解，默认关闭。"""
+    algo = model.algorithm
+    if not getattr(algo, "enable_pareto_front", False):
+        return
+    pf = algo.pareto_front
+    fitness_arr = pf.fitness.cpu().numpy()
+    solution = pf.solution
+    valid = np.isfinite(fitness_arr) & (fitness_arr > -np.inf)
+    n_valid = int(np.sum(valid))
+
+    os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+    with open(save_path, "wb") as f:
+        pickle.dump({"fitness": fitness_arr, "solution": solution}, f)
+
+    if print_verbose:
+        print(f"\n{prefix}帕累托前沿 ({n_valid} 个解) 已保存到 {save_path}")
+        for size in sorted(np.where(valid)[0]):
+            fit = fitness_arr[size]
+            tree = solution[size]
+            try:
+                expr = tree.to_sympy_expr()
+            except Exception:
+                expr = str(tree)
+            print(f"  {prefix}规模 {size}: MSE={RED}{-fit:.6f}{RESET}  ->  {expr}")
+
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"使用设备: {device}")
+print(f"设备: {device}")
 if torch.cuda.is_available():
-    print(f"GPU设备: {torch.cuda.get_device_name(0)}")
+    print(f"GPU: {torch.cuda.get_device_name(0)}")
 
-# ========== 加载数据 ==========
-print("\n========== 直接 GP 拟合 CSV 数据 ==========")
-print("\n正在加载 999_features.csv 和 999_targets.csv...")
-
-X_df = pd.read_csv("999_features.csv")
-y_df = pd.read_csv("999_targets.csv")
-
+# ========== 数据 ==========
+print(f"\n加载数据 (dataset_id={DATASET_ID})...")
+X_df = pd.read_csv(os.path.join(DATASETS_DIR, f"{DATASET_ID}_features.csv"))
+y_df = pd.read_csv(os.path.join(DATASETS_DIR, f"{DATASET_ID}_targets.csv"))
 X = X_df.to_numpy(dtype=np.float32)
 y = y_df.to_numpy(dtype=np.float32)
+print(f"特征: {X.shape}, 目标: {y.shape}")
 
-print(f"特征形状: {X.shape}, 目标形状: {y.shape}")
-print(f"输入维度: {X.shape[1]}, 输出维度: {y.shape[1]}")
-
-# 划分训练集和验证集（80/20）
 n_samples = X.shape[0]
 n_train = int(n_samples * 0.8)
 indices = np.random.RandomState(42).permutation(n_samples)
-train_idx, val_idx = indices[:n_train], indices[n_train:]
 
-X_train = torch.FloatTensor(X[train_idx]).to(device).contiguous()
-X_val = torch.FloatTensor(X[val_idx]).to(device).contiguous()
-y_train = torch.FloatTensor(y[train_idx]).to(device).contiguous()
-y_val = torch.FloatTensor(y[val_idx]).to(device).contiguous()
-
-print(f"训练集: {X_train.shape[0]} 样本, 验证集: {X_val.shape[0]} 样本")
+X_train = torch.FloatTensor(X[indices[:n_train]]).to(device).contiguous()
+X_val = torch.FloatTensor(X[indices[n_train:]]).to(device).contiguous()
+y_train = torch.FloatTensor(y[indices[:n_train]]).to(device).contiguous()
+y_val = torch.FloatTensor(y[indices[n_train:]]).to(device).contiguous()
+print(f"训练: {X_train.shape[0]}, 验证: {X_val.shape[0]}")
 
 input_dim = X.shape[1]
 output_dim = y.shape[1]
 
-# ========== 使用 GP 直接拟合 ==========
-print("\n正在使用 GP 拟合...")
+# ========== 算子配置 ==========
+OPS = {"+": 0.25, "-": 0.15, "*": 0.30, "sin": 0.10, "cos": 0.10, "exp": 0.05, "abs": 0.05}
 
-gp_models = []
+# ========== descriptor ==========
+descriptor = GenerateDescriptor(
+    max_tree_len=256,
+    input_len=input_dim,
+    output_len=1,
+    using_funcs=OPS,
+    max_layer_cnt=8,
+    const_samples=[-3, -2, -1, -0.5, 0, 0.5, 1, 2, 3],
+    layer_leaf_prob=0.3,
+)
 
+# ========== 训练 ==========
+results = []
 for out_idx in range(output_dim):
-    print(f"  输出维度 {out_idx + 1}/{output_dim}...")
+    print(f"\n{'='*60}")
+    print(f"  输出维度 {out_idx + 1}/{output_dim}")
+    print(f"{'='*60}")
 
-    gp_train_X = X_train.contiguous()
-    gp_train_y = y_train[:, out_idx].contiguous().view(-1, 1)
-    gp_val_X = X_val.contiguous()
-    gp_val_y = y_val[:, out_idx].contiguous()
+    ty = y_train[:, out_idx].contiguous().view(-1, 1)
+    vy = y_val[:, out_idx].contiguous()
+    t0 = time.time()
 
-    descriptor = GenerateDescriptor(
-        max_tree_len=64,
-        input_len=input_dim,
-        output_len=1,
-        using_funcs=["+", "-", "*", "/", "sin", "cos", "tan"],
-        max_layer_cnt=6,
-        const_samples=[-2, -1, 0, 1, 2],
-        layer_leaf_prob=0.3,
-    )
-
-    gp_model = Regressor(
-        descriptor=descriptor,
-        crossover=DefaultCrossover(),
-        mutation=DefaultMutation(
-            mutation_rate=0.1, descriptor=descriptor.update(max_layer_cnt=4)
-        ),
-        selection=TournamentSelection(tournament_size=20),
-        pop_size=1000,
-        generation_limit=100,
+    # --- 阶段1：结构搜索 ---
+    print("\n  === 阶段1：结构搜索 ===")
+    model_p1 = Regressor(
+        descriptor,
+        DefaultCrossover(crossover_rate=0.9),
+        DefaultMutation(mutation_rate=0.15, descriptor=descriptor.update(max_layer_cnt=3)),
+        TournamentSelection(tournament_size=20, survivor_rate=0.5),
+        pop_size=50000,
         elite_rate=0.1,
+        generation_limit=101,
         print_mse=True,
+        print_mse_prefix="    [P1] ",
+        enable_pareto_front=True,
+        inject_rate=0.05,
+        optim_steps=0,
+        optim_n=5000,
+        optim_offspring=20,
+        optim_interval=20,
     )
-    gp_model.fit(gp_train_X, gp_train_y)
+    model_p1.fit(X_train, ty)
+    print_and_save_pareto(
+        model_p1,
+        os.path.join(MODELS_DIR, f"pareto_phase1_out{out_idx}.pkl"),
+        prefix="[P1] ",
+    )
 
-    # 评估
-    gp_pred_train = gp_model.predict(gp_train_X)
-    gp_pred_val = gp_model.predict(gp_val_X)
-    train_mse = torch.mean((gp_pred_train - gp_train_y) ** 2).item()
-    val_mse = torch.mean((gp_pred_val - gp_val_y.view(-1, 1)) ** 2).item()
-    print(f"    训练MSE: {train_mse:.6f}, 验证MSE: {val_mse:.6f}")
+    # --- 阶段2：常数精调，继承阶段1种群 ---
+    print("\n  === 阶段2：常数精调 ===")
+    model_p2 = Regressor(
+        descriptor,
+        DefaultCrossover(crossover_rate=0.3),
+        DefaultMutation(mutation_rate=0.03, descriptor=descriptor.update(max_layer_cnt=3)),
+        TournamentSelection(tournament_size=5, survivor_rate=0.2),
+        initial_forest=model_p1.algorithm.forest,
+        elite_rate=0.2,
+        generation_limit=101,
+        print_mse=True,
+        print_mse_prefix="    [P2] ",
+        enable_pareto_front=True,
+        optim_steps=0,
+        optim_n=2000,
+        optim_offspring=50,
+        optim_interval=20,
+    )
+    model_p2.fit(X_train, ty)
+    print_and_save_pareto(
+        model_p2,
+        os.path.join(MODELS_DIR, f"pareto_phase2_out{out_idx}.pkl"),
+        prefix="[P2] ",
+    )
 
-    gp_models.append(gp_model)
-    if output_dim == 1:
-        try:
-            print(f"    最佳表达式: {gp_model.best_tree.to_sympy_expr()}")
-        except Exception:
-            pass
+    elapsed = time.time() - t0
+    best = model_p2
 
-# ========== 整合模型并评估 ==========
-print("\n评估完整 GP 模型...")
+    pred_t = best.predict(X_train)
+    pred_v = best.predict(X_val)
+    t_mse = torch.mean((pred_t - ty) ** 2).item()
+    v_mse = torch.mean((pred_v - vy.view(-1, 1)) ** 2).item()
+    print(f"\n  训练MSE: {t_mse:.6f}, 验证MSE: {v_mse:.6f}, 耗时: {elapsed:.1f}s")
 
+    try:
+        print(f"  表达式: {best.best_tree.to_sympy_expr()}")
+    except Exception:
+        pass
 
-class CompleteGPModel:
-    """整合多个输出维度的 GP 模型"""
+    results.append(best)
 
-    def __init__(self, gp_models):
-        self.gp_models = gp_models
-
-    def predict(self, X):
-        if not isinstance(X, torch.Tensor):
-            X = torch.FloatTensor(X).to(device)
-        X = X.contiguous()
-
-        outputs = []
-        for gp_model in self.gp_models:
-            pred = gp_model.predict(X)
-            if pred.dim() == 1:
-                pred = pred.unsqueeze(1)
-            outputs.append(pred)
-        return torch.cat(outputs, dim=1).contiguous()
-
-
-complete_model = CompleteGPModel(gp_models)
-
-train_pred = complete_model.predict(X_train)
-val_pred = complete_model.predict(X_val)
-train_mse_final = torch.mean((train_pred - y_train) ** 2).item()
-val_mse_final = torch.mean((val_pred - y_val) ** 2).item()
-
-print(f"完整 GP 模型 - 训练MSE: {train_mse_final:.6f}, 验证MSE: {val_mse_final:.6f}")
-
-# 保存模型
-print("\n正在保存 GP 模型...")
-os.makedirs("models/gp_models", exist_ok=True)
-import pickle
-
-with open("models/gp_models/raw_gp_models.pkl", "wb") as f:
-    pickle.dump(gp_models, f)
-with open("models/gp_models/complete_raw_gp_model.pkl", "wb") as f:
-    pickle.dump(complete_model, f)
-print("GP 模型已保存到 models/gp_models/")
-
-print("\n========== 完成！==========")
+# ========== 保存 ==========
+os.makedirs(MODELS_DIR, exist_ok=True)
+with open(os.path.join(MODELS_DIR, "two_phase_results.pkl"), "wb") as f:
+    pickle.dump(results, f)
+print("\n模型已保存")
+print("========== 完成 ==========")

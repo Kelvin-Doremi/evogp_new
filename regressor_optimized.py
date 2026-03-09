@@ -2,9 +2,13 @@
 两阶段 GP 符号回归：
   阶段1：结构搜索（高交叉、中变异、轻常数优化）
   阶段2：常数精调（低交叉、低变异、重常数优化），继承阶段1种群
+
+用法: python regressor_optimized.py [dataset_id]
+  如不传参则使用下方 DATASET_ID，也可直接在文件中修改 DATASET_ID
 """
 import os
 import pickle
+import sys
 import time
 
 import numpy as np
@@ -15,11 +19,20 @@ from evogp.operators import DefaultCrossover, DefaultMutation, TournamentSelecti
 from evogp.estimators import Regressor
 from evogp.core import GenerateDescriptor
 
+# 数据集 ID，可在文件中修改，或通过命令行传入: python regressor_optimized.py 1
+DATASET_ID = 9
+if len(sys.argv) > 1:
+    DATASET_ID = int(sys.argv[1])
+
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATASETS_DIR = os.path.join(ROOT_DIR, "datasets")
+MODELS_DIR = os.path.join(ROOT_DIR, "models", "gp_models", str(DATASET_ID), "optimized")
+
 RED, RESET = "\033[31m", "\033[0m"
 
 
-def print_and_save_pareto(model, save_path, prefix=""):
-    """提取、打印并保存帕累托前沿。"""
+def print_and_save_pareto(model, save_path, prefix="", print_verbose=False):
+    """提取并保存帕累托前沿。print_verbose=True 时打印各解，默认关闭。"""
     algo = model.algorithm
     if not getattr(algo, "enable_pareto_front", False):
         return
@@ -33,15 +46,16 @@ def print_and_save_pareto(model, save_path, prefix=""):
     with open(save_path, "wb") as f:
         pickle.dump({"fitness": fitness_arr, "solution": solution}, f)
 
-    print(f"\n{prefix}帕累托前沿 ({n_valid} 个解) 已保存到 {save_path}")
-    for size in sorted(np.where(valid)[0]):
-        fit = fitness_arr[size]
-        tree = solution[size]
-        try:
-            expr = tree.to_sympy_expr()
-        except Exception:
-            expr = str(tree)
-        print(f"  {prefix}规模 {size}: MSE={RED}{-fit:.6f}{RESET}  ->  {expr}")
+    if print_verbose:
+        print(f"\n{prefix}帕累托前沿 ({n_valid} 个解) 已保存到 {save_path}")
+        for size in sorted(np.where(valid)[0]):
+            fit = fitness_arr[size]
+            tree = solution[size]
+            try:
+                expr = tree.to_sympy_expr()
+            except Exception:
+                expr = str(tree)
+            print(f"  {prefix}规模 {size}: MSE={RED}{-fit:.6f}{RESET}  ->  {expr}")
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -50,9 +64,9 @@ if torch.cuda.is_available():
     print(f"GPU: {torch.cuda.get_device_name(0)}")
 
 # ========== 数据 ==========
-print("\n加载数据...")
-X_df = pd.read_csv("999_features.csv")
-y_df = pd.read_csv("999_targets.csv")
+print(f"\n加载数据 (dataset_id={DATASET_ID})...")
+X_df = pd.read_csv(os.path.join(DATASETS_DIR, f"{DATASET_ID}_features.csv"))
+y_df = pd.read_csv(os.path.join(DATASETS_DIR, f"{DATASET_ID}_targets.csv"))
 X = X_df.to_numpy(dtype=np.float32)
 y = y_df.to_numpy(dtype=np.float32)
 print(f"特征: {X.shape}, 目标: {y.shape}")
@@ -117,7 +131,7 @@ for out_idx in range(output_dim):
     model_p1.fit(X_train, ty)
     print_and_save_pareto(
         model_p1,
-        f"models/gp_models/pareto_phase1_out{out_idx}.pkl",
+        os.path.join(MODELS_DIR, f"pareto_phase1_out{out_idx}.pkl"),
         prefix="[P1] ",
     )
 
@@ -142,7 +156,7 @@ for out_idx in range(output_dim):
     model_p2.fit(X_train, ty)
     print_and_save_pareto(
         model_p2,
-        f"models/gp_models/pareto_phase2_out{out_idx}.pkl",
+        os.path.join(MODELS_DIR, f"pareto_phase2_out{out_idx}.pkl"),
         prefix="[P2] ",
     )
 
@@ -163,8 +177,8 @@ for out_idx in range(output_dim):
     results.append(best)
 
 # ========== 保存 ==========
-os.makedirs("models/gp_models", exist_ok=True)
-with open("models/gp_models/two_phase_results.pkl", "wb") as f:
+os.makedirs(MODELS_DIR, exist_ok=True)
+with open(os.path.join(MODELS_DIR, "two_phase_results.pkl"), "wb") as f:
     pickle.dump(results, f)
 print("\n模型已保存")
 print("========== 完成 ==========")

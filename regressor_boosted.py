@@ -1,12 +1,16 @@
 """
-直接使用 GP 拟合 999_features.csv 和 999_targets.csv，不经过神经网络。
+直接使用 GP 拟合 UCI 数据集，不经过神经网络。
 两阶段训练：
   阶段1：结构搜索（高交叉、中变异、轻常数优化）
   阶段2：交替优化（低交叉、低变异、重常数优化），继承阶段1种群
+
+用法: python regressor_boosted.py [dataset_id]
+  如不传参则使用下方 DATASET_ID，也可直接在文件中修改 DATASET_ID
 """
 
 import os
 import pickle
+import sys
 import time
 
 import numpy as np
@@ -17,49 +21,14 @@ from evogp.operators import DefaultCrossover, DefaultMutation, TournamentSelecti
 from evogp.estimators import Regressor, BoostedRegressor
 from evogp.core import Forest, GenerateDescriptor
 
-# ========== 工具函数 ==========
+# 数据集 ID，可在文件中修改，或通过命令行传入: python regressor_boosted.py 1
+DATASET_ID = 291
+if len(sys.argv) > 1:
+    DATASET_ID = int(sys.argv[1])
 
-RED, RESET = "\033[31m", "\033[0m"
-
-
-def get_pareto(model):
-    """从 Regressor 的 GeneticProgramming 中提取帕累托前沿。"""
-    algo = model.algorithm
-    if not getattr(algo, "enable_pareto_front", False):
-        return None
-    pf = algo.pareto_front
-    return {"fitness": pf.fitness.cpu().numpy(), "solution": pf.solution}
-
-
-def save_and_print_pareto(pareto_results, save_path, prefix=""):
-    """保存帕累托前沿到文件并打印各解（仅打印有有效 fitness 的）。"""
-    if not pareto_results or all(p is None for p in pareto_results):
-        return
-    os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
-    with open(save_path, "wb") as f:
-        pickle.dump(pareto_results, f)
-    print(f"\n{prefix}帕累托前沿已保存到 {save_path}")
-    for out_idx, pr in enumerate(pareto_results):
-        if pr is None:
-            continue
-        fitness_arr = pr["fitness"]
-        solution_forest = pr["solution"]
-        valid = np.isfinite(fitness_arr) & (fitness_arr > -np.inf)
-        n_valid = int(np.sum(valid))
-        print(f"\n{prefix}输出维度 {out_idx}: {n_valid} 个不同规模的帕累托解")
-        for size in sorted(np.where(valid)[0]):
-            fit = fitness_arr[size]
-            mse = -fit
-            tree = solution_forest[size]
-            try:
-                expr = tree.to_sympy_expr()
-            except Exception:
-                expr = str(tree)
-            print(
-                f"  {prefix}规模 {size}: fitness={RED}{fit:.6f}{RESET} "
-                f"\n ->  {expr}"
-            )
-
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATASETS_DIR = os.path.join(ROOT_DIR, "datasets")
+MODELS_DIR = os.path.join(ROOT_DIR, "models", "gp_models", str(DATASET_ID), "boosted")
 
 # ========== 设备 & 数据 ==========
 
@@ -68,9 +37,9 @@ print(f"使用设备: {device}")
 if torch.cuda.is_available():
     print(f"GPU设备: {torch.cuda.get_device_name(0)}")
 
-print("\n正在加载 999_features.csv 和 999_targets.csv...")
-X_df = pd.read_csv("999_features.csv")
-y_df = pd.read_csv("999_targets.csv")
+print(f"\n正在加载数据 (dataset_id={DATASET_ID})...")
+X_df = pd.read_csv(os.path.join(DATASETS_DIR, f"{DATASET_ID}_features.csv"))
+y_df = pd.read_csv(os.path.join(DATASETS_DIR, f"{DATASET_ID}_targets.csv"))
 
 X = X_df.to_numpy(dtype=np.float32)
 y = y_df.to_numpy(dtype=np.float32)
@@ -135,7 +104,7 @@ for out_idx in range(output_dim):
             print_mse=True,
             enable_pareto_front=True,
             inject_rate=0.05,
-            optim_steps=10,
+            optim_steps=0,
             optim_n=5000,
             optim_offspring=20,
             optim_interval=20,
@@ -149,7 +118,7 @@ for out_idx in range(output_dim):
             elite_rate=0.2,
             generation_limit=101,
             print_mse=True,
-            optim_steps=50,
+            optim_steps=0,
             optim_n=2000,
             optim_offspring=50,
             optim_interval=20,
@@ -202,15 +171,16 @@ train_mse_final = torch.mean((train_pred - y_train) ** 2).item()
 val_mse_final = torch.mean((val_pred - y_val) ** 2).item()
 print(f"完整模型 - 训练MSE: {train_mse_final:.6f}, 验证MSE: {val_mse_final:.6f}")
 
-# ========== 保存模型 ==========
+# ========== 保存模型（Boosted 无帕累托，保存最佳个体）==========
 print("\n正在保存模型...")
-os.makedirs("models/gp_models", exist_ok=True)
+os.makedirs(MODELS_DIR, exist_ok=True)
 try:
-    with open("models/gp_models/boosted_gp_models.pkl", "wb") as f:
+    # 保存各输出维度的最佳 BoostedRegressor（与 simple/optimized 的 two_phase_results 一致）
+    with open(os.path.join(MODELS_DIR, "boosted_results.pkl"), "wb") as f:
         pickle.dump(gp_models, f)
-    with open("models/gp_models/complete_boosted_model.pkl", "wb") as f:
+    with open(os.path.join(MODELS_DIR, "complete_boosted_model.pkl"), "wb") as f:
         pickle.dump(complete_model, f)
-    print("模型已保存到 models/gp_models/")
+    print(f"模型已保存到 {MODELS_DIR}/")
 except Exception as e:
     print(f"保存跳过（{e}）")
 
