@@ -23,8 +23,14 @@ class BaseSelection:
         assert 0 < survivor_rate <= 1.0, "survivor_rate should be in (0, 1]"
         self.survivor_rate = survivor_rate
 
-    def __call__(self, fitness: torch.Tensor, n: int) -> torch.Tensor:
+    def __call__(self, fitness: torch.Tensor, n: int, **kwargs) -> torch.Tensor:
         """Select *n* individuals from the survival pool.
+
+        Args:
+            fitness: Fitness tensor, shape ``(pop_size,)``.
+            n: Number of individuals to select.
+            **kwargs: Extra info (e.g. ``tree_sizes``) for multi-objective
+                selection operators.  Ignored by single-objective selectors.
 
         Returns:
             Selected indices (into the original population), shape ``(n,)``,

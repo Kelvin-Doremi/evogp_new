@@ -24,7 +24,7 @@ from evogp.core import Forest
 # Batched Separable NES (all optimizers in one set of tensor ops)
 # ═══════════════════════════════════════════════════════════════════
 
-class BatchedSeparableNES:
+class BatchedSNES:
     """N Separable NES instances batched into (N, ...) tensors.
 
     Different optimizers may have different dimensionalities; all are padded
@@ -135,7 +135,7 @@ class BatchedSeparableNES:
 # Public operator
 # ═══════════════════════════════════════════════════════════════════
 
-class SeparableNESOptimization(BaseOptimization):
+class SNESOptimization(BaseOptimization):
     """Optimize constants in GP trees using batched Separable NES.
 
     Much faster than CMA-ES: O(D) per update instead of O(D^2).
@@ -190,7 +190,7 @@ class SeparableNESOptimization(BaseOptimization):
         if not x0_list:
             return fitnesses
 
-        bopt = BatchedSeparableNES(
+        bopt = BatchedSNES(
             x0_list, self.n_offspring,
             sigma=self.sigma,
             learning_rate_mean=self.lr_mean,

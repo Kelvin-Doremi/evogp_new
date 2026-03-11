@@ -4,3 +4,4 @@ from .rank import RankSelection
 from .roulette import RouletteSelection
 from .tournament import TournamentSelection
 from .truncation import TruncationSelection
+from .pareto_tournament import ParetoTournamentSelection

@@ -28,7 +28,7 @@ if len(sys.argv) > 1:
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATASETS_DIR = os.path.join(ROOT_DIR, "datasets")
-MODELS_DIR = os.path.join(ROOT_DIR, "models", "gp_models", str(DATASET_ID), "boosted")
+MODELS_DIR = os.path.join(ROOT_DIR, "data", "gp_models", str(DATASET_ID), "boosted")
 
 # ========== 设备 & 数据 ==========
 

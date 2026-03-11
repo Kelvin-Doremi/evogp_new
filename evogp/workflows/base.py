@@ -147,8 +147,11 @@ class GeneticProgramming:
             ].to(torch.int32)
 
         # Parent selection
-        recipient_indices = self.selection(fitness, real_offspring_cnt)
-        donor_indices = self.selection(fitness, real_offspring_cnt)
+        tree_sizes = self.forest.batch_subtree_size[:, 0]
+        recipient_indices = self.selection(
+            fitness, real_offspring_cnt, tree_sizes=tree_sizes)
+        donor_indices = self.selection(
+            fitness, real_offspring_cnt, tree_sizes=tree_sizes)
 
         # Crossover + mutation
         next_forest = self.crossover(self.forest, recipient_indices, donor_indices)

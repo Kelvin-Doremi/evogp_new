@@ -42,11 +42,5 @@ dist/
 .DS_Store
 Thumbs.db
 
-# Ignore any local test data
-# test/
-output/
-test*.pyc
-
-# Ignore npy file
-*.npy
-models
+# Ignore any local data
+data/
